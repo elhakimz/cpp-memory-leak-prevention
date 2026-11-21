@@ -110,11 +110,21 @@ bash scripts/asan_check.sh path/to/file.cpp [extra g++ flags]   # ASan+UBSan(no-
 ```
 Limits to remember (verified): LeakSanitizer does **not** report unclosed `fopen`/`open` handles (glibc keeps live `FILE`s reachable) — check fds with `valgrind --track-fds=yes` or `lsof`. Static analysis (`clang-analyzer-cplusplus.NewDeleteLeaks`) catches simple early-return leaks but missed an exception-path leak; ASan/LSan at runtime caught both. A `shared_ptr` cycle is *not* flagged by LSan if a `weak_ptr` or global still points into it — use a `weak_ptr::expired()` assertion.
 
-`scripts/tests/` holds paired BAD/GOOD snippets and two runners: `python3 scripts/tests/run_evals.py` (leak patterns) and `python3 scripts/tests/run_memsafety.py` (UAF, bounds, dangling, UB, uninit, narrowing, slicing, races). Both prove each pattern behaves as the references claim. Gotcha: UBSan exits 0 on errors unless built with `-fno-sanitize-recover=all`.
+`scripts/tests/` holds paired BAD/GOOD snippets and three runners: `run_evals.py` (leak patterns), `run_memsafety.py` (UAF, bounds, dangling, UB, uninit, narrowing, slicing, races) and `run_tools.py` (check_all layers, fuzzing, CBMC). Both prove each pattern behaves as the references claim. Gotcha: UBSan exits 0 on errors unless built with `-fno-sanitize-recover=all`.
+
+## Tooling layers (one command)
+
+```bash
+bash scripts/check_all.sh file.cpp [--msan]            # warnings, ASan+UBSan, TSan*, cppcheck, clang-tidy, Valgrind, MSan (opt-in); *only if threads used
+bash scripts/fuzz_run.sh target.cpp 60 corpus/         # libFuzzer+ASan+UBSan for code that handles untrusted input (see scripts/fuzz_template.cpp)
+bash scripts/cbmc_check.sh harness.c                   # bounded model checking, e.g. prove a float->int conversion cannot overflow
+```
+Use `check_all.sh` after any fix when you can run code; report which layers PASS/FAIL/SKIP. Read `references/tooling.md` for what each tool misses (verified: LSan misses fd leaks, cppcheck missed variable-index OOB and signed overflow, Valgrind missed a returned dangling lambda reference). Recommend fuzzing for parsers/deserialisers and CBMC for numeric-range or small safety-critical kernels. `pip install cbmc` is the wrong package; use `apt install cbmc`.
 
 ## Reference files
 
 - `references/patterns.md` — before/after code for common leak patterns (exceptions, cycles, C APIs, callbacks, containers).
 - `references/debugging-tools.md` — ASan/LSan/Valgrind/heaptrack/MSVC CRT/Instruments usage and how to read reports.
 - `references/memory-safety-errors.md` — non-leak defects (UAF, bounds, dangling views, UB, narrowing/Ariane 5 lessons, slicing, races, C++26 contracts) with tested fixes.
+- `references/tooling.md` — coverage matrix of ASan/TSan/Valgrind/cppcheck/clang-tidy/MSan with verified blind spots; fuzzing and CBMC recipes.
 - `references/build-and-ci.md` — CMake snippets, clang-tidy checks, CI job, and test patterns for leak regression.
